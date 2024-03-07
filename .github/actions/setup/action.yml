@@ -34,6 +34,8 @@ runs:
         else
           echo "ENVKEY=${ENVKEY_DEV}" >> $GITHUB_ENV;
         fi
+        cat $GITHUB_ENV
+        cat $GITHUB_PATH
         
     - name: Setup dotnet
       uses: actions/setup-dotnet@v3
