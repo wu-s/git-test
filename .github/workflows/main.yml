@@ -1,0 +1,26 @@
+name: 2. 🤖 DEV PRE-PROD
+on:
+  push:
+    branches:
+      - main
+      - release**
+      - master
+
+jobs:
+  ci:
+    env:
+      HOME: '/root'
+      DOTNET_CLI_HOME: '/tmp'
+    permissions:
+      contents: 'read'
+      actions: 'read'
+    strategy:
+      matrix:
+        include:
+          - platform: ARM64
+    runs-on:
+      labels: [self-hosted, linux, '${{ matrix.platform }}']
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
