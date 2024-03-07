@@ -1,0 +1,93 @@
+name: 'Setup Action'
+description: 'Setup Composite Action'
+inputs:
+  effected-mode:
+    type: string
+    required: true
+    default: "false"
+outputs:
+  api-affected:
+    value: ${{ steps.check-effect.outputs.api-affected }}
+  api-e2e-affected:
+    value: ${{ steps.check-effect.outputs.api-e2e-affected }}
+runs:
+  using: 'composite'
+  steps:
+    - name: add path and env
+      shell: bash
+      run: |
+        echo "$HOME/.pyenv/shims" >> $GITHUB_PATH
+        echo "$HOME/.nvm/versions/node/v18.14.2/bin" >> $GITHUB_PATH
+        echo "ARC_CACHE_PATH=${ARC_CACHE_PATH:-/data/lib/arc-cache}" >> $GITHUB_ENV
+        REPO_NAME=${GITHUB_REPOSITORY#$GITHUB_REPOSITORY_OWNER/}
+        echo "ARC_CACHE_NM=${ARC_CACHE_PATH:-/data/lib/arc-cache}/$REPO_NAME" >> $GITHUB_ENV
+        BRANCH_NAME=${GITHUB_REF_NAME//\//-}
+        if [ "$(uname -m)" == 'aarch64' ]; then
+          ENVKEY_DEV=${ENVKEY_DEV_ARM64}
+          ENVKEY_STG=${ENVKEY_STG_ARM64} 
+          ENVKEY_PROD=${ENVKEY_PROD_ARM64}             
+        fi
+        if [[ ${SELECTED_PRODUCTION} == 'true' ]];then
+          echo "ENVKEY=${ENVKEY_PROD}" >> $GITHUB_ENV;
+        elif [[ ${BRANCH_NAME} == release*  ]];then
+          echo "ENVKEY=${ENVKEY_STG}" >> $GITHUB_ENV;
+        else
+          echo "ENVKEY=${ENVKEY_DEV}" >> $GITHUB_ENV;
+        fi
+        
+    - name: Setup dotnet
+      uses: actions/setup-dotnet@v3
+      with:
+        # DOTNET_INSTALL_DIR=/usr/share/dotnet
+        # NUGET_PACKAGES=~/.nuget/packages
+        dotnet-version: '8.0.1xx'
+
+    - name: Setup node
+      uses: actions/setup-node@v3
+
+    - name: Setup python
+      uses: actions/setup-python@v4
+
+    - name: Setup poetry
+      uses: abatilo/actions-poetry@v2
+      with:
+        poetry-version: "1.5.1"
+
+    - name: Sets the NX base and head SHAs for PRs
+      if: github.event_name == 'pull_request'
+      uses: nrwl/nx-set-shas@v3
+      with:
+        main-branch-name: ${{ github.base_ref }}
+ 
+    - name: Sets the NX base and head SHAs for non-PRs
+      if: github.event_name != 'pull_request'
+      uses: nrwl/nx-set-shas@v3
+      with:
+        main-branch-name: ${{ github.ref_name }}
+
+    - name: Prepare Nx
+      shell: bash
+      run: |
+        mkdir -p $ARC_CACHE_NM
+        [ -d $ARC_CACHE_NM/node_modules ] && mv $ARC_CACHE_NM/node_modules ${{ github.workspace }}/
+        export YARN_CACHE_FOLDER=$ARC_CACHE_PATH/yarn-cache
+        yarn install --ignore-engines
+        cd packages/Backend/Microservice/python && poetry install 
+    - name: Prepare effect 
+      id: check-effect
+      env:
+        EFFECTED_MODE: ${{ inputs.effected-mode }}
+      shell: bash
+      run: |
+        if [[ ${EFFECTED_MODE} == 'true' ]]; then
+          echo "api-affected=true" >> $GITHUB_OUTPUT
+        else
+          AFFECTED_PROJECT=`npx nx show projects --projects Backend/Infrastructure --affected -t up`
+          if [[ "$AFFECTED_PROJECT" == *Infrastructure* ]]; then
+            echo "api-affected=true" >> $GITHUB_OUTPUT
+          fi     
+          AFFECTED_PROJECT=`npx nx show projects --projects server-e2e --affected -t e2e` 
+          if [[ "$AFFECTED_PROJECT" == *server-e2e* ]]; then
+            echo "api-e2e-affected=true" >> $GITHUB_OUTPUT;
+          fi       
+        fi
