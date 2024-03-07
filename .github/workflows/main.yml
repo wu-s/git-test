@@ -19,7 +19,7 @@ jobs:
         include:
           - platform: ARM64
     runs-on:
-      labels: [self-hosted, macOS, X64]
+      labels: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v3
         with:
